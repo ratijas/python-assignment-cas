@@ -21,6 +21,7 @@ __all__ = [
     'AstParen',
     'AstBinaryExpr',
     'AstCompound',
+    'Replace',
 ]
 
 
@@ -348,6 +349,12 @@ class Replace:
     start: Cursor
     end: Cursor
     target: Sequence[AstNode]
+
+    @property
+    def diff(self) -> int:
+        old = self.end - self.start + 1
+        new = len(self.target)
+        return new - old
 
     @classmethod
     def one(cls, at: Cursor, target: AstNode) -> 'Replace':
