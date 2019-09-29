@@ -373,12 +373,8 @@ def filter_raw_node_token_type(tty: TokenType) -> Callable[[AstNode], bool]:
     return lambda node: isinstance(node, AstRaw) and node.value.tty == tty
 
 
-def filter_raw_node_left_paren() -> Callable[[AstNode], bool]:
-    return filter_raw_node_token_type(TokenType.LParen)
-
-
-def filter_raw_node_right_paren() -> Callable[[AstNode], bool]:
-    return filter_raw_node_token_type(TokenType.RParen)
+filter_raw_node_left_paren = filter_raw_node_token_type(TokenType.LParen)
+filter_raw_node_right_paren = filter_raw_node_token_type(TokenType.RParen)
 
 
 class Reducer(metaclass=abc.ABCMeta):
