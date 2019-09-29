@@ -312,7 +312,7 @@ def build_ast(source: str) -> BaseExpression:
     return parse_tokens(source, tokens, 0)
 
 
-def parse_tokens(source: str, tokens: List[Token], start: int = 0) -> BaseExpression:
+def parse_tokens(source: str, tokens: List[Token], start: Cursor = 0) -> BaseExpression:
     # replace {"expand" expr...} with ExpandExpression object
     # for i in find_all(tokens, PatternTokenType([TokenType.Expand]), start):
     #     inner = parse_tokens(source, tokens, i + 1)
@@ -361,7 +361,7 @@ def parse_tokens(source: str, tokens: List[Token], start: int = 0) -> BaseExpres
 
 class IPattern(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def match(self, tokens: Sequence[Token], start: int) -> Optional[int]:
+    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
         """Note that 0 (zero) is a valid match length"""
         return None
 
@@ -377,7 +377,7 @@ class PatternTokenType(IPattern):
 
         self.types = types
 
-    def match(self, tokens: Sequence[Token], start: int) -> Optional[int]:
+    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
         if start + self.min_len() > len(tokens):
             return 0
 
@@ -398,7 +398,7 @@ class PatternCombinator(IPattern):
 
         self.patterns = patterns
 
-    def match(self, tokens: Sequence[Token], start: int) -> Optional[int]:
+    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
         length = 0
         for p in self.patterns:
             match = p.match(tokens, start)
@@ -420,7 +420,7 @@ class PatternUntil(IPattern):
 
         self.pattern = pattern
 
-    def match(self, tokens: Sequence[Token], start: int) -> Optional[int]:
+    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
         if start + self.min_len() > len(tokens):
             return 0
 
@@ -444,7 +444,7 @@ class PatternUntil(IPattern):
 
 # def match(tokens: List[Token], pattern: Pattern)
 
-def find_one(tokens: Sequence[Token], pattern: IPattern, start: int) -> Optional[int]:
+def find_one(tokens: Sequence[Token], pattern: IPattern, start: Cursor) -> Optional[int]:
     for i in range(start, len(tokens)):
         if pattern.match(tokens, i):
             return i
@@ -477,7 +477,7 @@ def replace_all(pattern: IPattern,
                 replacer: Callable[[str, Sequence[Token]], Sequence[Token]],
                 source: str,
                 tokens: MutableSequence[Token],
-                start: int = 0):
+                start: Cursor = 0):
     index = start
     while index + pattern.min_len() <= len(tokens):
         match = pattern.match(tokens, index)
