@@ -331,6 +331,7 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         ExpandReducer(),
         LiteralsReducer(),
         HistoryReducer(),
+        ParensReducer(),
     ]
     # not the most efficient algorithm, but should work.
     # Quiet similar to the one used at REPL evaluation stage.
@@ -454,6 +455,30 @@ class HistoryReducer(Reducer):
                 start, end = lbr.start, rbr.end
                 target = AstAtom(history, start, end, source[start:end + 1])
                 return Replace(i, i + 2, [target])
+
+
+class ParensReducer(Reducer):
+    """Recursively parse parens"""
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        # do not use recursion, instead replace
+        # create replacer for the inner-most parens.
+        stack: List[Cursor] = []
+        for i in range(n_start, n_end + 1):
+            node = nodes[i]
+            if filter_raw_node_left_paren(node):
+                stack.append(i)
+
+            elif filter_raw_node_right_paren(node):
+                p_start = stack.pop()
+                p_end = i
+                child = build_with_reducers(source, list(nodes), p_start + 1, p_end - 1)
+                s_start = nodes[p_start].start
+                s_end = nodes[p_end].end
+                target = AstParen(child, s_start, s_end, source[s_start:s_end + 1])
+                return Replace(p_start, p_end, [target])
+
+        return None
 
 
 class IPattern(metaclass=abc.ABCMeta):
