@@ -9,4 +9,8 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 
 # How to run
 
-`$ python src/repl.py`
+`$ cd src && python -m cas`
+
+## Run all tests
+
+`$ cd src && python -m cas.tests`
