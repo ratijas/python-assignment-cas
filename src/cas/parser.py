@@ -2,10 +2,10 @@ import abc
 import enum
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Generic, TypeVar, Iterable, Optional, List, Sequence, Callable, MutableSequence, Any
+from typing import Generic, TypeVar, Iterable, Optional, List, Sequence, Callable, MutableSequence, Any, Union
 
-from .expression import *
 from .exception import *
+from .expression import *
 
 __all__ = [
     'TokenType',
@@ -13,6 +13,14 @@ __all__ = [
     'Cursor',
     'tokenize',
     'build_ast',
+    'AstNodeType',
+    'AstNode',
+    'AstRaw',
+    'AstExpand',
+    'AstAtom',
+    'AstParen',
+    'AstBinaryExpr',
+    'AstCompound',
 ]
 
 
@@ -207,6 +215,88 @@ def parse_parens_brackets(cursor: Cursor, s: str) -> (Cursor, Token[None]):
 ###############################################################################
 #                                     AST                                     #
 ###############################################################################
+
+class AstNodeType(enum.Enum):
+    Raw = enum.auto()
+    Expand = enum.auto()
+    Atom = enum.auto()
+    Paren = enum.auto()
+    BinaryExpr = enum.auto()
+    Compound = enum.auto()
+
+
+@dataclass
+class AstNode(Generic[T], metaclass=abc.ABCMeta):
+    value: T
+
+    @property
+    @abc.abstractmethod
+    def ty(self) -> AstNodeType:
+        pass
+
+
+@dataclass
+class AstRaw(AstNode[Token]):
+    """Transparent wrapper for token.
+
+    All raw nodes must be replaced by the end of parsing process.
+    """
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.Raw
+
+
+@dataclass
+class AstExpand(AstNode[BaseExpression]):
+    """Expand command with attached expression"""
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.Expand
+
+
+@dataclass
+class AstAtom(AstNode[Union[Literal, Symbol, HistoryRef]]):
+    """Either literal, symbol or history ref"""
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.Atom
+
+
+@dataclass
+class AstParen(AstNode[AstNode]):
+    """Parens are the building blocks of any expression"""
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.Paren
+
+
+@dataclass
+class AstBinaryExpr(AstNode[BinaryExpr]):
+    """Building binary expressions is the second task after resolving parens.
+
+    Those AstBinaryExpr, which are direct descendants of AstParen, should be simplified
+    into just AstBinaryExpr with underlying expression's `parens` property set to True."""
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.BinaryExpr
+
+
+@dataclass
+class AstCompound(AstNode[List[BaseExpression]]):
+    """Multiplication written in-line without operator, e.g.: '2xy'.
+
+    Such expression is a special case of binary multiplication.
+    """
+
+    @property
+    def ty(self) -> AstNodeType:
+        return AstNodeType.Compound
+
 
 def build_ast(source: str) -> BaseExpression:
     tokens = list(tokenize(source))
