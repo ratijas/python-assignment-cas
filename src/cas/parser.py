@@ -2,7 +2,7 @@ import abc
 import enum
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Generic, TypeVar, Iterable, Optional, List, Sequence, Callable, MutableSequence, Any, Union
+from typing import Generic, TypeVar, Iterable, Optional, List, Sequence, Callable, MutableSequence, Any, Union, Set
 
 from .exception import *
 from .expression import *
@@ -42,7 +42,7 @@ class TokenType(enum.Enum):
     Symbol = 'symbol'
     """value is a str with length 1"""
     Operator = 'operator'
-    """value is a char representing particular operator"""
+    """value is a BinaryOperation enum instance representing particular operator"""
 
 
 T = TypeVar('T')
@@ -332,6 +332,10 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         LiteralsReducer(),
         HistoryReducer(),
         ParensReducer(),
+        BinaryReducer({BinaryOperation.Pow}),
+        # CompoundReducer(),
+        BinaryReducer({BinaryOperation.Mul, BinaryOperation.Div}),
+        BinaryReducer({BinaryOperation.Add, BinaryOperation.Sub}),
     ]
     # not the most efficient algorithm, but should work.
     # Quiet similar to the one used at REPL evaluation stage.
@@ -479,6 +483,40 @@ class ParensReducer(Reducer):
                 return Replace(p_start, p_end, [target])
 
         return None
+
+
+class BinaryReducer(Reducer):
+    """Reduce binary expression like {<lhs> BinaryOperator <rhs>} into AstBinaryExpr"""
+
+    def __init__(self, operators: Set[BinaryOperation]):
+        """Create BinaryReducer for a set of operators of same priority."""
+        super().__init__()
+
+        self.operators = operators
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        for i in range(n_start, n_end + 1):
+            node = nodes[i]
+            if self.filter(node):
+                op: BinaryOperation = node.value.value
+                n_lhs, n_rhs = i - 1, i + 1
+                if n_lhs < n_start or n_rhs > n_end:
+                    raise ParseError(source, node.start, node.end,
+                                     'binary operation missing argument(s)')
+                lhs, rhs = nodes[n_lhs], nodes[n_rhs]
+                s_start, s_end = lhs.start, rhs.end
+                lhs_expr = lhs.into_expr(source)  # potentially fail-able operations
+                rhs_expr = rhs.into_expr(source)  # on separate lines
+                target = AstBinaryExpr(BinaryExpr(lhs_expr, op, rhs_expr), lhs.start, rhs.end,
+                                       source[s_start:s_end + 1])
+                return Replace(n_lhs, n_rhs, [target])
+
+    def filter(self, node: AstNode) -> bool:
+        if not isinstance(node, AstRaw): return False
+        token = node.value
+        if token.tty != TokenType.Operator: return False
+        operator: BinaryOperation = token.value
+        return operator in self.operators
 
 
 class IPattern(metaclass=abc.ABCMeta):
