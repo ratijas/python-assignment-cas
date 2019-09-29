@@ -55,8 +55,8 @@ class Repl:
         :return: parsed expression
         :raise InvalidExpressionError: if unable to parse
         """
-        import re
-        raw = raw.strip()
+        # import re
+        # raw = raw.strip()
         try:
             # match = re.match(r"^\[(\d+)\]$", raw)
             # if match is not None:
