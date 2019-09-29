@@ -312,11 +312,13 @@ def build_ast(source: str) -> BaseExpression:
     tokens = list(tokenize(source))
     nodes = list(map(AstRaw.from_token, tokens))
 
-    return build_with_reducers(source, nodes, 0)
+    n_start = 0
+    n_end = len(nodes) - 1 if len(nodes) > n_start else n_start
+    return build_with_reducers(source, nodes, n_start, n_end)
 
 
-def build_with_reducers(source: str, nodes: MutableSequence[AstNode], start: Cursor) -> BaseExpression:
-    """Reduce all subsequent nodes from `start` into single AST node."""
+def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: Cursor, n_end: Cursor) -> BaseExpression:
+    """Reduce all subsequent nodes from `n_start` into single AST node."""
     reducers = [
         ExpandReducer(),
         LiteralsReducer(),
@@ -328,19 +330,21 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], start: Cur
     while some:
         some = False
         for reducer in reducers:
-            replace = reducer.reduce(source, nodes, start)
+            replace = reducer.reduce(source, nodes, n_start, n_end)
             if replace is not None:
                 replace.apply(nodes)
+                # shift `n_end`
+                n_end += replace.diff
                 some = True
                 break
 
-    if len(nodes) == start:
-        at = nodes[start-1].end + 1 if start > 0 else 0
+    if len(nodes) == n_start:
+        at = nodes[n_start - 1].end + 1 if n_start > 0 else 0
         to = len(source) - 1
         raise ParseError(source, at, to, 'no content')
-    if len(nodes) > start + 1:
-        raise ParseError(source, nodes[start + 1].start, len(source) - 1, 'leftovers')
-    node = nodes[start]
+    if len(nodes) > n_start + 1:
+        raise ParseError(source, nodes[n_start + 1].start, len(source) - 1, 'leftovers')
+    node = nodes[n_start]
     return node.into_expr(source)
 
 
@@ -379,29 +383,32 @@ def filter_raw_node_right_paren() -> Callable[[AstNode], bool]:
 
 class Reducer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
-        """Called once for each replacement until no more replacements can be made."""
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        """Called once for each replacement until no more replacements can be made.
+
+        Parameters `n_start` & `n_end` are absolute positions of nodes in `nodes` list.
+        """
 
 
 class ExpandReducer(Reducer):
-    def reduce(self, source: str, nodes: Sequence[AstNode], cursor: Cursor) -> Optional[Replace]:
-        if len(nodes) > cursor:
-            expand = nodes[cursor]
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        if len(nodes) > n_start:
+            expand = nodes[n_start]
             if expand.ty == AstNodeType.Raw and expand.value.tty == TokenType.Expand:
-                expr = build_with_reducers(source, list(nodes), cursor + 1)
-                start, end = expand.start, nodes[-1].end
-                target = AstExpand(expr, start, end, source[start:end + 1])
-                return Replace(cursor, len(nodes) - 1, [target])
+                expr = build_with_reducers(source, list(nodes), n_start + 1, n_end)
+                s_start, s_end = expand.start, nodes[-1].end
+                target = AstExpand(expr, s_start, s_end, source[s_start:s_end + 1])
+                return Replace(n_start, n_end, [target])
 
 
 class LiteralsReducer(Reducer):
     """Reduce AstRaw literals and symbols nodes to AstAtom nodes"""
 
-    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
         literal_filter = filter_raw_node_token_type(TokenType.Literal)
         symbol_filter = filter_raw_node_token_type(TokenType.Symbol)
 
-        for i in range(start, len(nodes)):
+        for i in range(n_start, n_end + 1):
             node = nodes[i]
             if literal_filter(node) or symbol_filter(node):
                 token = node.value  # type: Token[Union[Literal, Symbol]]
@@ -411,16 +418,22 @@ class LiteralsReducer(Reducer):
 class HistoryReducer(Reducer):
     """Reduce sequence of {LBracket Literal[int] RBracket} to {History} """
 
-    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
         filter_lbr = filter_raw_node_token_type(TokenType.LBracket)
         filter_rbr = filter_raw_node_token_type(TokenType.RBracket)
         filter_atom_literal = lambda n: \
             isinstance(n, AstAtom) and \
             isinstance(n.value, Literal)
 
-        for i in range(start, len(nodes) - 3 + 1):
-            lbr, atom, rbr = nodes[i:i + 3]  # type: AstRaw, AstAtom, AstRaw
+        for i in range(n_start, n_end + 1):
+            lbr = nodes[i]
             if filter_lbr(lbr):
+                if i + 2 > n_end:
+                    raise ParseError(source, lbr.start, lbr.end,
+                                     'opened history reference without matching bracket')
+
+                atom, rbr = nodes[i + 1], nodes[i + 2]
+
                 if not filter_atom_literal(atom) or not isinstance(atom.value.literal, int):
                     raise ParseError(source, atom.start, atom.end,
                                      'history index must be integer literal')
