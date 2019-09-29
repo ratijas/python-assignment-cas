@@ -276,6 +276,9 @@ class AstParen(AstNode[AstNode]):
     def ty(self) -> AstNodeType:
         return AstNodeType.Paren
 
+    def into_expr(self, source: str) -> BaseExpression:
+        return self.value.into_expr(source)
+
 
 @dataclass
 class AstBinaryExpr(AstNode[BinaryExpr]):
