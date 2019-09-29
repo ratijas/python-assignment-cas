@@ -228,11 +228,19 @@ class AstNodeType(enum.Enum):
 @dataclass
 class AstNode(Generic[T], metaclass=abc.ABCMeta):
     value: T
+    start: int
+    end: int
+    raw: str
 
     @property
     @abc.abstractmethod
     def ty(self) -> AstNodeType:
         pass
+
+    # @abc.abstractmethod
+    def into_expr(self, source: str) -> BaseExpression:
+        raise ParseError(source, self.start, self.end,
+                         f'AST node of type {type(self)} cannot be converted into expession')
 
 
 @dataclass
@@ -241,6 +249,10 @@ class AstRaw(AstNode[Token]):
 
     All raw nodes must be replaced by the end of parsing process.
     """
+
+    @classmethod
+    def from_token(cls, token: Token) -> 'AstRaw':
+        return cls(token, token.start, token.end, token.raw)
 
     @property
     def ty(self) -> AstNodeType:
@@ -255,6 +267,9 @@ class AstExpand(AstNode[BaseExpression]):
     def ty(self) -> AstNodeType:
         return AstNodeType.Expand
 
+    def into_expr(self, source: str) -> BaseExpression:
+        return ExpandExpression(self.value)
+
 
 @dataclass
 class AstAtom(AstNode[Union[Literal, Symbol, HistoryRef]]):
@@ -263,6 +278,9 @@ class AstAtom(AstNode[Union[Literal, Symbol, HistoryRef]]):
     @property
     def ty(self) -> AstNodeType:
         return AstNodeType.Atom
+
+    def into_expr(self, source: str) -> BaseExpression:
+        return self.value
 
 
 @dataclass
@@ -285,6 +303,9 @@ class AstBinaryExpr(AstNode[BinaryExpr]):
     def ty(self) -> AstNodeType:
         return AstNodeType.BinaryExpr
 
+    def into_expr(self, source: str) -> BaseExpression:
+        return self.value
+
 
 @dataclass
 class AstCompound(AstNode[List[BaseExpression]]):
@@ -297,19 +318,144 @@ class AstCompound(AstNode[List[BaseExpression]]):
     def ty(self) -> AstNodeType:
         return AstNodeType.Compound
 
+    def into_expr(self, source: str) -> BaseExpression:
+        # TODO: what it should compile to?
+        raise NotImplementedError()
+
 
 def build_ast(source: str) -> BaseExpression:
     tokens = list(tokenize(source))
+    nodes = list(map(AstRaw.from_token, tokens))
 
-    if find_one(tokens, PatternTokenType([TokenType.Expand]), 0) == 0:
-        index = find_one(tokens, PatternTokenType([TokenType.Expand]), 1)
-        if index is not None:
-            t = tokens[index]
-            raise ParseError(source, t.start, t.end, '"expand" may only appear at the beginning')
+    return build_ast_inner(source, nodes)
 
-        return ExpandExpression(parse_tokens(source, tokens, 1))
+    # if find_one(tokens, PatternTokenType([TokenType.Expand]), 0) == 0:
+    #     index = find_one(tokens, PatternTokenType([TokenType.Expand]), 1)
+    #     if index is not None:
+    #         t = tokens[index]
+    #         raise ParseError(source, t.start, t.end, '"expand" may only appear at the beginning')
+    #
+    #     return ExpandExpression(parse_tokens(source, tokens, 1))
+    #
+    # return parse_tokens(source, tokens, 0)
 
-    return parse_tokens(source, tokens, 0)
+
+def build_ast_inner(source: str, nodes: List[AstNode], start: Cursor = 0) -> BaseExpression:
+    for i in range(start, len(nodes)):
+        n = nodes[i]
+        if n.ty == AstNodeType.Raw and n.value.tty == TokenType.Expand:
+            nodes[i] = build_expand(source, n, nodes, i + 1)
+
+    return build_with_reducers(source, nodes, start)
+
+
+def build_expand(source: str, expand: AstNode[Token], nodes: List[AstNode], start: Cursor) -> AstExpand:
+    assert expand.ty == AstNodeType.Raw
+    assert expand.value.tty == TokenType.Expand
+
+    expr = build_ast_inner(source, nodes, start)
+    start = expand.value.start
+    end = nodes[-1].end
+    return AstExpand(expr, start, end, source[start:end + 1])
+
+
+def build_with_reducers(source: str, nodes: List[AstNode], start: Cursor) -> BaseExpression:
+    reducers = [
+        LiteralsReducer(),
+        HistoryReducer(),
+    ]
+    # not the most efficient algorithm, but should work.
+    # Quiet similar to the one used at REPL evaluation stage.
+    some = True
+    while some:
+        some = False
+        for reducer in reducers:
+            replace = reducer.reduce(source, nodes, start)
+            if replace is not None:
+                replace.apply(nodes)
+                some = True
+                break
+
+    if len(nodes) == 0:
+        raise ParseError(source, 0, 0, 'no content')
+    if len(nodes) > 1:
+        raise ParseError(source, nodes[1].start, len(source) - 1, 'leftovers')
+    node = nodes[0]
+    return node.into_expr(source)
+
+
+@dataclass
+class Replace:
+    start: Cursor
+    end: Cursor
+    target: Sequence[AstNode]
+
+    @classmethod
+    def one(cls, at: Cursor, target: AstNode) -> 'Replace':
+        return cls(at, at, [target])
+
+    def apply(self, nodes: MutableSequence[AstNode]):
+        """Modify nodes list in-place."""
+        nodes[self.start:self.end + 1] = self.target
+
+
+def filter_raw_node_token_type(tty: TokenType) -> Callable[[AstNode], bool]:
+    return lambda node: isinstance(node, AstRaw) and node.value.tty == tty
+
+
+def filter_raw_node_left_paren() -> Callable[[AstNode], bool]:
+    return filter_raw_node_token_type(TokenType.LParen)
+
+
+def filter_raw_node_right_paren() -> Callable[[AstNode], bool]:
+    return filter_raw_node_token_type(TokenType.RParen)
+
+
+class Reducer(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
+        """Called once for each replacement until no more replacements can be made."""
+
+
+class LiteralsReducer(Reducer):
+    """Reduce AstRaw literals and symbols nodes to AstAtom nodes"""
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
+        literal_filter = filter_raw_node_token_type(TokenType.Literal)
+        symbol_filter = filter_raw_node_token_type(TokenType.Symbol)
+
+        for i in range(start, len(nodes)):
+            node = nodes[i]
+            if literal_filter(node) or symbol_filter(node):
+                token = node.value  # type: Token[Union[Literal, Symbol]]
+                return Replace.one(i, AstAtom(token.value, token.start, token.end, token.raw))
+
+
+class HistoryReducer(Reducer):
+    """Reduce sequence of {LBracket Literal[int] RBracket} to {History} """
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
+        filter_lbr = filter_raw_node_token_type(TokenType.LBracket)
+        filter_rbr = filter_raw_node_token_type(TokenType.RBracket)
+        # XXX: shit code
+        filter_atom_literal = lambda n: \
+            isinstance(n, AstAtom) and \
+            isinstance(n.value, Literal)
+
+        for i in range(start, len(nodes) - 3 + 1):
+            lbr, atom, rbr = nodes[i:i + 3]  # type: AstRaw, AstAtom, AstRaw
+            if filter_lbr(lbr):
+                if not filter_atom_literal(atom) or not isinstance(atom.value.literal, int):
+                    raise ParseError(source, atom.start, atom.end,
+                                     'history index must be integer literal')
+
+                if not filter_rbr(rbr):
+                    raise ParseError(source, rbr.start, rbr.end, 'expected "]"')
+
+                history = HistoryRef(atom.value.literal)
+                start, end = lbr.start, rbr.end
+                target = AstAtom(history, start, end, source[start:end + 1])
+                return Replace(i, i + 2, [target])
 
 
 def parse_tokens(source: str, tokens: List[Token], start: Cursor = 0) -> BaseExpression:

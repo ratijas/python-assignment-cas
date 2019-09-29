@@ -38,6 +38,9 @@ class Repl:
                     self.history.append(HistoryItem(expr, result))
                     print(f'{history_number}: {result}')
 
+                except ParseError as e:
+                    print(f'err: {e}')
+
                 except InvalidExpressionError:
                     print(f'err: invalid expression')
 
@@ -55,17 +58,17 @@ class Repl:
         import re
         raw = raw.strip()
         try:
-            match = re.match(r"^\[(\d+)\]$", raw)
-            if match is not None:
-                return HistoryRef(int(match[1]))
-
-            match = re.match(r"^\d+$", raw)
-            if match is not None:
-                return Literal(int(raw))
-
-            match = re.match(r"^\d+\.\d+$", raw)
-            if match is not None:
-                return Literal(float(raw))
+            # match = re.match(r"^\[(\d+)\]$", raw)
+            # if match is not None:
+            #     return HistoryRef(int(match[1]))
+            #
+            # match = re.match(r"^\d+$", raw)
+            # if match is not None:
+            #     return Literal(int(raw))
+            #
+            # match = re.match(r"^\d+\.\d+$", raw)
+            # if match is not None:
+            #     return Literal(float(raw))
 
             if raw == "yahaha":
                 return BinaryExpr(Literal(42), BinaryOperation.Add, Literal(37), True)
