@@ -53,7 +53,12 @@ class BinaryOperation(enum.Enum):
             return operator.add
         if self is BinaryOperation.Sub:
             return operator.sub
-        # TODO
+        if self is BinaryOperation.Mul:
+            return operator.mul
+        if self is BinaryOperation.Div:
+            return operator.truediv
+        if self is BinaryOperation.Pow:
+            return operator.pow
 
     def __call__(self, lhs: 'BaseExpression', rhs: 'BaseExpression') -> 'BaseExpression':
         return self.operator(lhs, rhs)
@@ -82,6 +87,26 @@ class Literal(BaseExpression):
         if isinstance(other, Literal):
             return Literal(self.literal + other.literal)
         return BinaryExpr(self, BinaryOperation.Add, other)
+
+    def __sub__(self, other) -> BaseExpression:
+        if isinstance(other, Literal):
+            return Literal(self.literal - other.literal)
+        return BinaryExpr(self, BinaryOperation.Sub, other)
+
+    def __mul__(self, other) -> BaseExpression:
+        if isinstance(other, Literal):
+            return Literal(self.literal * other.literal)
+        return BinaryExpr(self, BinaryOperation.Mul, other)
+
+    def __truediv__(self, other) -> BaseExpression:
+        if isinstance(other, Literal):
+            return Literal(self.literal / other.literal)
+        return BinaryExpr(self, BinaryOperation.Div, other)
+
+    def __pow__(self, other) -> BaseExpression:
+        if isinstance(other, Literal):
+            return Literal(self.literal ** other.literal)
+        return BinaryExpr(self, BinaryOperation.Pow, other)
 
     def __eq__(self, other: object):
         if not isinstance(other, Literal):
