@@ -334,9 +334,11 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], start: Cur
                 break
 
     if len(nodes) == start:
-        raise ParseError(source, 0, 0, 'no content')
+        at = nodes[start-1].end + 1 if start > 0 else 0
+        to = len(source) - 1
+        raise ParseError(source, at, to, 'no content')
     if len(nodes) > start + 1:
-        raise ParseError(source, nodes[1].start, len(source) - 1, 'leftovers')
+        raise ParseError(source, nodes[start + 1].start, len(source) - 1, 'leftovers')
     node = nodes[start]
     return node.into_expr(source)
 
