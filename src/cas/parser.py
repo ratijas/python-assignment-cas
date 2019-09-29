@@ -308,8 +308,7 @@ class AstCompound(AstNode[List[BaseExpression]]):
         return AstNodeType.Compound
 
     def into_expr(self, source: str) -> BaseExpression:
-        # TODO: what it should compile to?
-        raise NotImplementedError()
+        return CompoundExpression(self.value)
 
 
 def build_expr(source: str) -> BaseExpression:
@@ -333,7 +332,7 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         HistoryReducer(),
         ParensReducer(),
         BinaryReducer({BinaryOperation.Pow}),
-        # CompoundReducer(),
+        CompoundReducer(),
         BinaryReducer({BinaryOperation.Mul, BinaryOperation.Div}),
         BinaryReducer({BinaryOperation.Add, BinaryOperation.Sub}),
         RedundantParensReducer(),
@@ -519,6 +518,47 @@ class BinaryReducer(Reducer):
         if token.tty != TokenType.Operator: return False
         operator: BinaryOperation = token.value
         return operator in self.operators
+
+
+class CompoundReducer(Reducer):
+    """Reduce subsequent literals and symbols into one AstCompound object.
+
+    Reducing { Literal Symbol+ } into Compound([literal, *symbols]).
+    """
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        for i in range(n_start, n_end + 1):
+            node = nodes[i]
+            if CompoundReducer.filter_node(node):
+                j = i
+                while j + 1 <= n_end:
+                    if CompoundReducer.filter_node(nodes[j + 1]):
+                        j += 1
+                    else:
+                        break
+                if j != i:
+                    c_start, c_end = nodes[i], nodes[j]
+                    s_start, s_end = c_start.start, c_end.end
+                    raw = source[s_start:s_end + 1]
+                    expr_list = [n.into_expr(source) for n in nodes[i:j + 1]]
+                    target = AstCompound(expr_list, s_start, s_end, raw)
+                    return Replace(i, j, [target])
+
+    @staticmethod
+    def filter_node(node: AstNode) -> bool:
+        """Is it suitable node for compound multiplication?"""
+        if isinstance(node, AstAtom):
+            return CompoundReducer.filter_expr(node.value)
+        if isinstance(node, AstBinaryExpr):
+            expr = node.value
+            if expr.op is BinaryOperation.Pow:
+                return CompoundReducer.filter_expr(expr.lhs) and \
+                       CompoundReducer.filter_expr(expr.rhs)
+
+    @staticmethod
+    def filter_expr(expr: BaseExpression) -> bool:
+
+        return isinstance(expr, (Literal, Symbol))
 
 
 class RedundantParensReducer(Reducer):

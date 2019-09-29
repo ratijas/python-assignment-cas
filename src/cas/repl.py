@@ -2,6 +2,7 @@ import atexit
 import readline
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
+from functools import reduce
 from typing import List, Optional
 
 from .exception import *
@@ -134,6 +135,12 @@ class Pass(metaclass=ABCMeta):
             if any((lhs.affected, rhs.affected)):
                 e = e.clone(lhs=lhs.new, rhs=rhs.new)
 
+        elif isinstance(e, CompoundExpression):
+            results = [self.walk(expr) for expr in e.inner]
+
+            if any(inner.affected for inner in results):
+                e = e.clone(r.new for r in results)
+
         # visit root node
         result = self.step(e)
         if result is not None:
@@ -156,6 +163,19 @@ class ConstantsFolding(Pass):
         if isinstance(e, BinaryExpr):
             if all(isinstance(expr, Literal) for expr in (e.lhs, e.rhs)):
                 return e.op(e.lhs, e.rhs)
+        if isinstance(e, CompoundExpression):
+            literals = [i for i, ex in enumerate(e.inner) if isinstance(ex, Literal)]
+            if len(literals) > 1:
+                factor = reduce(BinaryOperation.Mul, (e.inner[i] for i in literals))
+                # remove literals
+                e = e.clone()
+                e.inner = [ex.clone()
+                           for i, ex in enumerate(e.inner)
+                           if i not in literals]
+                # prepend factor, if it would make sense
+                if factor != Literal(1):
+                    e.inner.insert(0, factor)
+                return e
 
 
 class HistoryExpansion(Pass):

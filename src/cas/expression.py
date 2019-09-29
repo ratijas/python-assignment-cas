@@ -3,7 +3,7 @@ import operator
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Union, TypeVar, Optional, Callable
+from typing import Union, TypeVar, Optional, Callable, Iterable, MutableSequence
 
 from .exception import *
 from .history import *
@@ -12,6 +12,7 @@ __all__ = [
     'DisplayOptions',
     'BinaryOperation',
     'BaseExpression',
+    'CompoundExpression',
     'Literal',
     'Symbol',
     'BinaryExpr',
@@ -197,3 +198,21 @@ class ExpandExpression(BaseExpression):
     def clone(self: 'ExpandExpression', inner: Optional[BaseExpression] = None) -> 'ExpandExpression':
         inner = inner if inner is not None else self.inner.clone()
         return ExpandExpression(inner)
+
+
+class CompoundExpression(BaseExpression):
+    def __init__(self, inner: Iterable[BaseExpression]):
+        self.inner: MutableSequence[BaseExpression] = list(inner)
+
+    def __str__(self) -> str:
+        return ''.join(map(str, self.inner))
+
+    def clone(self: 'CompoundExpression',
+              inner: Optional[Iterable[Optional[BaseExpression]]] = None) -> 'CompoundExpression':
+        inner = (
+            new if new is not None else old.clone()
+            for old, new in zip(self.inner, inner)
+        ) if inner is not None else (
+            old.clone() for old in self.inner
+        )
+        return CompoundExpression(inner)
