@@ -337,6 +337,7 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         BinaryReducer({BinaryOperation.Add, BinaryOperation.Sub}),
         RedundantParensReducer(),
         ParensToBinaryExprReducer(),
+        TopLevelParensReducer(),
     ]
     # not the most efficient algorithm, but should work.
     # Quiet similar to the one used at REPL evaluation stage.
@@ -569,6 +570,26 @@ class RedundantParensReducer(Reducer):
             node = nodes[i]
             if isinstance(node, AstParen) and isinstance(node.value, AstParen):
                 return Replace(i, i, [node.value])
+
+
+class TopLevelParensReducer(Reducer):
+    """Reduce top-level binary expression's parens into nothing."""
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+
+        if n_start == 0:
+            node = nodes[0]
+            if isinstance(node, AstExpand):
+                expr = node.value
+                if isinstance(expr, BinaryExpr) and expr.parens is not False:  # None or True
+                    expr = expr.clone(parens=False)
+                    target = AstExpand(expr, node.start, node.end, node.raw)
+                    return Replace(0, 0, [target])
+
+            elif isinstance(node, AstBinaryExpr) and node.value.parens is not False:  # None or True
+                expr = node.value.clone(parens=False)
+                target = AstBinaryExpr(expr, node.start, node.end, node.raw)
+                return Replace(0, 0, [target])
 
 
 class ParensToBinaryExprReducer(Reducer):
