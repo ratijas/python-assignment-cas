@@ -68,6 +68,7 @@ class Repl:
         """
         passes: List[Pass] = [
             ConstantsFolding(),
+            CompoundSorting(),
             HistoryExpansion(self.history)
         ]
 
@@ -152,6 +153,18 @@ class Pass(metaclass=ABCMeta):
 
     def step(self, expression: BaseExpression) -> Optional[BaseExpression]:
         return None
+
+
+class CompoundSorting(Pass):
+
+    def run(self, e: BaseExpression) -> PassResult:
+        return self.walk(e)
+
+    def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        if isinstance(e, CompoundExpression):
+            new = sorted(e.inner, key=str)
+            if e.inner != new:
+                return e.clone(new)
 
 
 class ConstantsFolding(Pass):
