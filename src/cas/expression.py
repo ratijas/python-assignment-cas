@@ -75,7 +75,7 @@ class BaseExpression(metaclass=ABCMeta):
         return self
 
     @abstractmethod
-    def clone(self: T) -> 'T':
+    def clone(self: 'T') -> 'T':
         raise NotImplemented
 
 

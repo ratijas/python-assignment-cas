@@ -97,7 +97,7 @@ class PassResult:
     new: Optional[BaseExpression]
 
     @property
-    def affected(self):
+    def affected(self) -> bool:
         return (self.new is not None) and (self.new is not self.old)
 
 
