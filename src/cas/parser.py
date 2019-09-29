@@ -132,22 +132,6 @@ def check_next(cursor: Cursor, s: str, description: str) -> None:
     raise ParseError(s, cursor, cursor, description)
 
 
-# def parse_history(cursor: Cursor, s: str) -> (Cursor, Token[int]):
-#     start = cursor
-#     if s[cursor] == '[':
-#         cursor = skip_spaces(cursor + 1, s)
-#         cursor, t = parse_int(cursor, s)
-#         check_next(cursor, s, 'integer')
-#         cursor = skip_spaces(cursor, s)
-#         if s[cursor] == ']':
-#             end = cursor
-#             cursor += 1
-#             sub = s[start:cursor]
-#
-#             return cursor, Token(TokenType.History, start, end, sub, t.value)
-
-
-# verified
 def parse_int(cursor: Cursor, s: str) -> (Cursor, Token[int]):
     start = cursor
     # sign
@@ -329,16 +313,6 @@ def build_ast(source: str) -> BaseExpression:
 
     return build_with_reducers(source, nodes, 0)
 
-    # if find_one(tokens, PatternTokenType([TokenType.Expand]), 0) == 0:
-    #     index = find_one(tokens, PatternTokenType([TokenType.Expand]), 1)
-    #     if index is not None:
-    #         t = tokens[index]
-    #         raise ParseError(source, t.start, t.end, '"expand" may only appear at the beginning')
-    #
-    #     return ExpandExpression(parse_tokens(source, tokens, 1))
-    #
-    # return parse_tokens(source, tokens, 0)
-
 
 def build_with_reducers(source: str, nodes: MutableSequence[AstNode], start: Cursor) -> BaseExpression:
     """Reduce all subsequent nodes from `start` into single AST node."""
@@ -431,7 +405,6 @@ class HistoryReducer(Reducer):
     def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
         filter_lbr = filter_raw_node_token_type(TokenType.LBracket)
         filter_rbr = filter_raw_node_token_type(TokenType.RBracket)
-        # XXX: shit code
         filter_atom_literal = lambda n: \
             isinstance(n, AstAtom) and \
             isinstance(n.value, Literal)
@@ -450,53 +423,6 @@ class HistoryReducer(Reducer):
                 start, end = lbr.start, rbr.end
                 target = AstAtom(history, start, end, source[start:end + 1])
                 return Replace(i, i + 2, [target])
-
-
-def parse_tokens(source: str, tokens: List[Token], start: Cursor = 0) -> BaseExpression:
-    # replace {"expand" expr...} with ExpandExpression object
-    # for i in find_all(tokens, PatternTokenType([TokenType.Expand]), start):
-    #     inner = parse_tokens(source, tokens, i + 1)
-    #     return ExpandExpression(inner)
-
-    # replace sequence of {LBracket Literal[int] RBracket} with {History}
-    # TODO: AST node
-    # replace_all(PatternTokenType([TokenType.LBracket, TokenType.Literal, TokenType.RBracket]),
-    #             history_replacer,
-    #             source, tokens, start)
-
-    # top priority are parens: ( expr )
-    # later they will be removed by yet another filter
-    replace_all(PatternCombinator([
-        PatternTokenType([TokenType.LParen]),
-        PatternUntil(PatternTokenType([TokenType.RParen]))
-    ]),
-        parens_replacer,
-        source, tokens, start)
-
-    # for i in find_all(tokens, PatternTokenType([TokenType.LBracket, TokenType.Literal, TokenType.RBracket]), start):
-    #     # LBracket at index i
-    #     lbr, n, rbr = tokens[i:i + 2]
-    #     start, end = lbr.start, rbr.end
-    #     raw = source[start:end]
-    #     value = n.value
-    #     tokens[i:i + 2] = [Token(TokenType.History, start, end, raw, value)]
-
-    # for i in find_all(tokens, PatternTokenType([TokenType.Literal, TokenType.Symbol]), start):
-    #     pass
-    return tokens
-
-
-# def history_replacer(source: str, tokens: Sequence[Token]) -> Sequence[Token]:
-#     assert len(tokens) == 3
-#
-#     lbr, n, rbr = tokens[0], tokens[1], tokens[2]
-#
-#     if not isinstance(n.value, Literal) or not isinstance(n.value.literal, int):
-#         raise ParseError(source, n.start, n.end, 'history index must be integer literal')
-#
-#     start, end = lbr.start, rbr.end
-#     raw = source[start:end + 1]
-#     return [Token(TokenType.History, start, end, raw, n.value.literal)]
 
 
 class IPattern(metaclass=abc.ABCMeta):
@@ -573,44 +499,10 @@ class PatternUntil(IPattern):
         return self.pattern.min_len()
 
 
-# def match(self, tokens: List[Token]) -> Match:
-#     pass
-
-
-# class Rule:
-#     pattern: Pattern
-#     substitution: Pattern
-
-
-# def match(tokens: List[Token], pattern: Pattern)
-
 def find_one(tokens: Sequence[Token], pattern: IPattern, start: Cursor) -> Optional[int]:
     for i in range(start, len(tokens)):
         if pattern.match(tokens, i):
             return i
-
-
-# def find_all(tokens: Sequence[Token], pattern: IPattern, start: int) -> Iterable[int]:
-#     while True:
-#         index = find_one(tokens, pattern, start)
-#         if index is None:
-#             return
-#
-#         yield index
-#         # it is reasonable to assume that tokens list will be changed between runs
-#         break
-
-#
-# for i in range(start, len(tokens)):
-#
-#     if pattern.match(tokens, i):
-#         yield i
-#         # it is reasonable to assume that tokens list will be changed between runs
-#         break
-# else:
-#     # if no matches found during the run over whole sequence of tokens
-#     return
-#
 
 
 def replace_all(pattern: IPattern,
@@ -627,34 +519,5 @@ def replace_all(pattern: IPattern,
         index += 1
 
 
-def parens_replacer(source: str, tokens: Sequence[Token]) -> Sequence[Token]:
-    assert len(tokens) >= 3  # parent are the first and the last tokens
-    tokens = tokens[1:-1]
-    # TODO: build actual AST
-    return tokens
-
-
 if __name__ == '__main__':
-    # for t in build_ast('  expand 42/-7 + (+3^ 100500.228xy) [3]'):
-    #     print(t)
-    #
-    # print(build_ast('expand [3]'))
-    # # print(_t)
-
-    _p = PatternCombinator([
-        PatternTokenType([TokenType.LParen]),
-        PatternUntil(PatternTokenType([TokenType.RParen]))
-    ])
-
-    _s = '4x * (2x - 1)'
-    _ts = list(tokenize(_s))
-
-    print(_p.match(_ts, 0))
-
-    replace_all(_p,
-                parens_replacer,
-                _s,
-                _ts)
-
-    for _t in _ts:
-        print(_t)
+    pass

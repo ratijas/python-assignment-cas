@@ -1,11 +1,8 @@
 import atexit
-import enum
-import operator
 import readline
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from fractions import Fraction
-from typing import List, Union, TypeVar, Optional, Callable
+from typing import List, Optional
 
 from .exception import *
 from .expression import *
@@ -55,24 +52,7 @@ class Repl:
         :return: parsed expression
         :raise InvalidExpressionError: if unable to parse
         """
-        # import re
-        # raw = raw.strip()
         try:
-            # match = re.match(r"^\[(\d+)\]$", raw)
-            # if match is not None:
-            #     return HistoryRef(int(match[1]))
-            #
-            # match = re.match(r"^\d+$", raw)
-            # if match is not None:
-            #     return Literal(int(raw))
-            #
-            # match = re.match(r"^\d+\.\d+$", raw)
-            # if match is not None:
-            #     return Literal(float(raw))
-
-            if raw == "yahaha":
-                return BinaryExpr(Literal(42), BinaryOperation.Add, Literal(37), True)
-
             return build_ast(raw)
 
         except ValueError:
