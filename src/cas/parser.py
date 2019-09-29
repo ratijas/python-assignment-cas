@@ -327,7 +327,7 @@ def build_ast(source: str) -> BaseExpression:
     tokens = list(tokenize(source))
     nodes = list(map(AstRaw.from_token, tokens))
 
-    return build_ast_inner(source, nodes)
+    return build_with_reducers(source, nodes, 0)
 
     # if find_one(tokens, PatternTokenType([TokenType.Expand]), 0) == 0:
     #     index = find_one(tokens, PatternTokenType([TokenType.Expand]), 1)
@@ -340,27 +340,10 @@ def build_ast(source: str) -> BaseExpression:
     # return parse_tokens(source, tokens, 0)
 
 
-def build_ast_inner(source: str, nodes: List[AstNode], start: Cursor = 0) -> BaseExpression:
-    for i in range(start, len(nodes)):
-        n = nodes[i]
-        if n.ty == AstNodeType.Raw and n.value.tty == TokenType.Expand:
-            nodes[i] = build_expand(source, n, nodes, i + 1)
-
-    return build_with_reducers(source, nodes, start)
-
-
-def build_expand(source: str, expand: AstNode[Token], nodes: List[AstNode], start: Cursor) -> AstExpand:
-    assert expand.ty == AstNodeType.Raw
-    assert expand.value.tty == TokenType.Expand
-
-    expr = build_ast_inner(source, nodes, start)
-    start = expand.value.start
-    end = nodes[-1].end
-    return AstExpand(expr, start, end, source[start:end + 1])
-
-
-def build_with_reducers(source: str, nodes: List[AstNode], start: Cursor) -> BaseExpression:
+def build_with_reducers(source: str, nodes: MutableSequence[AstNode], start: Cursor) -> BaseExpression:
+    """Reduce all subsequent nodes from `start` into single AST node."""
     reducers = [
+        ExpandReducer(),
         LiteralsReducer(),
         HistoryReducer(),
     ]
@@ -376,11 +359,11 @@ def build_with_reducers(source: str, nodes: List[AstNode], start: Cursor) -> Bas
                 some = True
                 break
 
-    if len(nodes) == 0:
+    if len(nodes) == start:
         raise ParseError(source, 0, 0, 'no content')
-    if len(nodes) > 1:
+    if len(nodes) > start + 1:
         raise ParseError(source, nodes[1].start, len(source) - 1, 'leftovers')
-    node = nodes[0]
+    node = nodes[start]
     return node.into_expr(source)
 
 
@@ -415,6 +398,17 @@ class Reducer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def reduce(self, source: str, nodes: Sequence[AstNode], start: Cursor) -> Optional[Replace]:
         """Called once for each replacement until no more replacements can be made."""
+
+
+class ExpandReducer(Reducer):
+    def reduce(self, source: str, nodes: Sequence[AstNode], cursor: Cursor) -> Optional[Replace]:
+        if len(nodes) > cursor:
+            expand = nodes[cursor]
+            if expand.ty == AstNodeType.Raw and expand.value.tty == TokenType.Expand:
+                expr = build_with_reducers(source, list(nodes), cursor + 1)
+                start, end = expand.start, nodes[-1].end
+                target = AstExpand(expr, start, end, source[start:end + 1])
+                return Replace(cursor, len(nodes) - 1, [target])
 
 
 class LiteralsReducer(Reducer):
