@@ -53,7 +53,7 @@ class Repl:
         :raise InvalidExpressionError: if unable to parse
         """
         try:
-            return build_ast(raw)
+            return build_expr(raw)
 
         except ValueError:
             raise InvalidExpressionError()

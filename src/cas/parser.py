@@ -13,6 +13,7 @@ __all__ = [
     'Cursor',
     'tokenize',
     'build_ast',
+    'build_expr',
     'AstNodeType',
     'AstNode',
     'AstRaw',
@@ -311,7 +312,11 @@ class AstCompound(AstNode[List[BaseExpression]]):
         raise NotImplementedError()
 
 
-def build_ast(source: str) -> BaseExpression:
+def build_expr(source: str) -> BaseExpression:
+    return build_ast(source).into_expr(source)
+
+
+def build_ast(source: str) -> AstNode:
     tokens = list(tokenize(source))
     nodes = list(map(AstRaw.from_token, tokens))
 
@@ -320,7 +325,7 @@ def build_ast(source: str) -> BaseExpression:
     return build_with_reducers(source, nodes, n_start, n_end)
 
 
-def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: Cursor, n_end: Cursor) -> BaseExpression:
+def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: Cursor, n_end: Cursor) -> AstNode:
     """Reduce all subsequent nodes from `n_start` into single AST node."""
     reducers = [
         ExpandReducer(),
@@ -347,8 +352,8 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         raise ParseError(source, at, to, 'no content')
     if len(nodes) > n_start + 1:
         raise ParseError(source, nodes[n_start + 1].start, len(source) - 1, 'leftovers')
-    node = nodes[n_start]
-    return node.into_expr(source)
+
+    return nodes[n_start]
 
 
 @dataclass
@@ -394,7 +399,8 @@ class ExpandReducer(Reducer):
         if len(nodes) > n_start:
             expand = nodes[n_start]
             if expand.ty == AstNodeType.Raw and expand.value.tty == TokenType.Expand:
-                expr = build_with_reducers(source, list(nodes), n_start + 1, n_end)
+                node = build_with_reducers(source, list(nodes), n_start + 1, n_end)
+                expr = node.into_expr(source)
                 s_start, s_end = expand.start, nodes[-1].end
                 target = AstExpand(expr, s_start, s_end, source[s_start:s_end + 1])
                 return Replace(n_start, n_end, [target])
