@@ -334,23 +334,27 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
     ]
     # not the most efficient algorithm, but should work.
     # Quiet similar to the one used at REPL evaluation stage.
-    some = True
-    while some:
-        some = False
+    changed = True  # kind of do-while loop in C
+    while changed:
+        changed = False
         for reducer in reducers:
-            replace = reducer.reduce(source, nodes, n_start, n_end)
-            if replace is not None:
+            # apply all replacements suggested by reducer
+            while True:  # while ((replace := ...) is not None):
+                replace = reducer.reduce(source, nodes, n_start, n_end)
+                if replace is None: break
+
                 replace.apply(nodes)
                 # shift `n_end`
                 n_end += replace.diff
-                some = True
-                break
+                # indicate that something has changed
+                changed = True
 
-    if len(nodes) == n_start:
-        at = nodes[n_start - 1].end + 1 if n_start > 0 else 0
-        to = len(source) - 1
+    if n_end < n_start:
+        at = nodes[n_start - 1].end + 1 if (n_start - 1) in range(len(nodes)) else 0
+        to = nodes[n_end + 1].start - 1 if (n_end + 1) in range(len(nodes)) else 0
         raise ParseError(source, at, to, 'no content')
-    if len(nodes) > n_start + 1:
+
+    if n_end > n_start:
         raise ParseError(source, nodes[n_start + 1].start, len(source) - 1, 'leftovers')
 
     return nodes[n_start]
