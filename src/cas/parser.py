@@ -336,6 +336,8 @@ def build_with_reducers(source: str, nodes: MutableSequence[AstNode], n_start: C
         # CompoundReducer(),
         BinaryReducer({BinaryOperation.Mul, BinaryOperation.Div}),
         BinaryReducer({BinaryOperation.Add, BinaryOperation.Sub}),
+        RedundantParensReducer(),
+        ParensToBinaryExprReducer(),
     ]
     # not the most efficient algorithm, but should work.
     # Quiet similar to the one used at REPL evaluation stage.
@@ -517,6 +519,29 @@ class BinaryReducer(Reducer):
         if token.tty != TokenType.Operator: return False
         operator: BinaryOperation = token.value
         return operator in self.operators
+
+
+class RedundantParensReducer(Reducer):
+    """Reduce double-stacked parens into single layer."""
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        for i in range(n_start, n_end + 1):
+            node = nodes[i]
+            if isinstance(node, AstParen) and isinstance(node.value, AstParen):
+                return Replace(i, i, [node.value])
+
+
+class ParensToBinaryExprReducer(Reducer):
+    """Reduce { AstParen(AstBinaryExpr(...)) } into { AstBinaryExpr(parens=True) } """
+
+    def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
+        for i in range(n_start, n_end + 1):
+            node = nodes[i]
+            if isinstance(node, AstParen) and isinstance(node.value, AstBinaryExpr):
+                child = node.value
+                expr = child.value.clone(parens=True)
+                target = AstBinaryExpr(expr, child.start, child.end, child.raw)
+                return Replace(i, i, [target])
 
 
 class IPattern(metaclass=abc.ABCMeta):

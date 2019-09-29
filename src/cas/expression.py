@@ -163,10 +163,12 @@ class BinaryExpr(BaseExpression):
 
     def clone(self: 'BinaryExpr',
               lhs: Optional[BaseExpression] = None,
-              rhs: Optional[BaseExpression] = None) -> 'BinaryExpr':
+              rhs: Optional[BaseExpression] = None,
+              parens: Optional[bool] = None) -> 'BinaryExpr':
         lhs = lhs if lhs is not None else self.lhs.clone()
         rhs = rhs if rhs is not None else self.rhs.clone()
-        return BinaryExpr(lhs, self.op, rhs, self.parens)
+        parens = parens if parens is not None else self.parens
+        return BinaryExpr(lhs, self.op, rhs, parens)
 
 
 class HistoryRef(BaseExpression):
