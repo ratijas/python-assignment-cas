@@ -40,7 +40,9 @@ class BinaryOperation(enum.Enum):
         if self is BinaryOperation.Pow:
             return DisplayOptions(False, True)
         if self is BinaryOperation.Mul:
-            return DisplayOptions(False, False)
+            return DisplayOptions(True, True)
+            # TODO: leave space-less version to the future CompoundMul variant
+            # return DisplayOptions(False, False)
         return DisplayOptions(True, True)
 
     @property
