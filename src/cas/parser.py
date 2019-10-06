@@ -558,7 +558,6 @@ class CompoundReducer(Reducer):
 
     @staticmethod
     def filter_expr(expr: BaseExpression) -> bool:
-
         return isinstance(expr, (Literal, Symbol))
 
 
@@ -603,101 +602,3 @@ class ParensToBinaryExprReducer(Reducer):
                 expr = child.value.clone(parens=True)
                 target = AstBinaryExpr(expr, child.start, child.end, child.raw)
                 return Replace(i, i, [target])
-
-
-class IPattern(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
-        """Note that 0 (zero) is a valid match length"""
-        return None
-
-    @abc.abstractmethod
-    def min_len(self) -> int:
-        return 0
-
-
-class PatternTokenType(IPattern):
-
-    def __init__(self, types: Sequence[TokenType]) -> None:
-        super().__init__()
-
-        self.types = types
-
-    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
-        if start + self.min_len() > len(tokens):
-            return 0
-
-        if all(token.tty == tty
-               for token, tty in zip(tokens[start:], self.types)):
-            return len(self.types)
-
-        return None
-
-    def min_len(self) -> int:
-        return len(self.types)
-
-
-class PatternCombinator(IPattern):
-
-    def __init__(self, patterns: Sequence[IPattern]) -> None:
-        super().__init__()
-
-        self.patterns = patterns
-
-    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
-        length = 0
-        for p in self.patterns:
-            match = p.match(tokens, start)
-            if match is None:
-                return 0
-            start += match
-            length += match
-        return length
-
-    def min_len(self) -> int:
-        return sum(p.min_len() for p in self.patterns)
-
-
-class PatternUntil(IPattern):
-    """Up until and including sub-pattern."""
-
-    def __init__(self, pattern: IPattern):
-        super().__init__()
-
-        self.pattern = pattern
-
-    def match(self, tokens: Sequence[Token], start: Cursor) -> Optional[int]:
-        if start + self.min_len() > len(tokens):
-            return 0
-
-        for i in range(start, len(tokens)):
-            match = self.pattern.match(tokens, i)
-            if match is not None:
-                return i - start + match
-
-    def min_len(self) -> int:
-        return self.pattern.min_len()
-
-
-def find_one(tokens: Sequence[Token], pattern: IPattern, start: Cursor) -> Optional[int]:
-    for i in range(start, len(tokens)):
-        if pattern.match(tokens, i):
-            return i
-
-
-def replace_all(pattern: IPattern,
-                replacer: Callable[[str, Sequence[Token]], Sequence[Token]],
-                source: str,
-                tokens: MutableSequence[Token],
-                start: Cursor = 0):
-    index = start
-    while index + pattern.min_len() <= len(tokens):
-        match = pattern.match(tokens, index)
-        if match:
-            tokens[index:index + match] = replacer(source, tokens[index:index + match])
-
-        index += 1
-
-
-if __name__ == '__main__':
-    pass
