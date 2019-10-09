@@ -177,6 +177,8 @@ class HistoryRef(BaseExpression):
         self.item = item
 
     def __str__(self) -> str:
+        if self.item == -1:
+            return '[last]'
         return f'[{self.item}]'
 
     def resolve(self, history: 'History') -> 'BaseExpression':

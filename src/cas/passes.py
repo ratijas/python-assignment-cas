@@ -115,6 +115,17 @@ class ConstantsFolding(Pass):
                 return e
 
 
+class FactorsFolding(Pass):
+
+    def run(self, e: BaseExpression) -> PassResult:
+        return self.walk(e)
+
+    def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        if isinstance(e, BinaryExpr) and e.op in (BinaryOperation.Mul, BinaryOperation.Div):
+            if isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression):
+                pass
+
+
 class HistoryExpansion(Pass):
 
     def __init__(self, history: History):
@@ -125,6 +136,9 @@ class HistoryExpansion(Pass):
 
     def step(self, expression: BaseExpression) -> Optional[BaseExpression]:
         if isinstance(expression, HistoryRef):
+            if expression.item < 0:
+                expression.item = self.history.next_number + expression.item
+
             return expression.resolve(self.history)
 
 
