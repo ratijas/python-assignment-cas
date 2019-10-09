@@ -552,6 +552,9 @@ class CompoundReducer(Reducer):
             if CompoundReducer.filter_node(node):
                 j = i
                 while j + 1 <= n_end:
+                    if CompoundReducer.is_literal(nodes[j]) and CompoundReducer.is_literal(nodes[j + 1]):
+                        raise ParseError(source, nodes[j].start, nodes[j + 1].end,
+                                         'compound can not contain two literals in a row')
                     if CompoundReducer.filter_node(nodes[j + 1]):
                         j += 1
                     else:
@@ -578,6 +581,10 @@ class CompoundReducer(Reducer):
     @staticmethod
     def filter_expr(expr: BaseExpression) -> bool:
         return isinstance(expr, (Literal, Symbol))
+
+    @staticmethod
+    def is_literal(node: AstNode):
+        return isinstance(node, AstAtom) and isinstance(node.value, Literal)
 
 
 class RedundantParensReducer(Reducer):
