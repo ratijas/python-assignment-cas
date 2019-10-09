@@ -432,7 +432,10 @@ class LiteralsReducer(Reducer):
 
 
 class HistoryReducer(Reducer):
-    """Reduce sequence of {LBracket Literal[int] RBracket} to {History} """
+    """Reduce sequence of {LBracket <HistoryItem> RBracket} to {History}
+
+    where <HistoryItem> is either Literal[int] or token "last".
+    """
 
     def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
         filter_lbr = filter_raw_node_token_type(TokenType.LBracket)
@@ -444,6 +447,22 @@ class HistoryReducer(Reducer):
         for i in range(n_start, n_end + 1):
             lbr = nodes[i]
             if filter_lbr(lbr):
+                # token "last"
+                # костыль mode on
+                if i + 5 <= n_end:
+                    atoms = nodes[i + 1:i + 5]
+                    rbr = nodes[i + 5]
+
+                    inner_start = atoms[0].start
+                    inner_end = atoms[-1].end
+                    if source[inner_start:inner_end + 1] == "last":
+                        history = HistoryRef(-1)
+                        start = lbr.start
+                        end = rbr.end
+                        target = AstAtom(history, start, end, source[start:end + 1])
+                        return Replace(i, i + 5, [target])
+
+                # Literal[int]
                 if i + 2 > n_end:
                     raise ParseError(source, lbr.start, lbr.end,
                                      'opened history reference without matching bracket')
@@ -452,7 +471,7 @@ class HistoryReducer(Reducer):
 
                 if not filter_atom_literal(atom) or not isinstance(atom.value.literal, int):
                     raise ParseError(source, atom.start, atom.end,
-                                     'history index must be integer literal')
+                                     'history index must be either an integer literal or token "last"')
 
                 if not filter_rbr(rbr):
                     raise ParseError(source, rbr.start, rbr.end, 'expected "]"')
