@@ -1,5 +1,8 @@
 import atexit
-import readline
+try:
+    import readline
+except ImportError:
+    readline = None
 
 from .exception import *
 from .expression import *
@@ -13,11 +16,12 @@ class Repl:
         self.history: History = History({})
         # let user work comfortably with REPL in terminal
         # noinspection PyBroadException
-        try:
-            readline.read_history_file()
-        except Exception:
-            pass
-        atexit.register(readline.write_history_file)
+        if readline is not None:
+            try:
+                readline.read_history_file()
+            except Exception:
+                pass
+            atexit.register(readline.write_history_file)
 
     def block(self):
         try:
