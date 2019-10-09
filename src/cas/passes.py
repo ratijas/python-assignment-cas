@@ -142,6 +142,15 @@ class HistoryExpansion(Pass):
             return expression.resolve(self.history)
 
 
+class Expanding(Pass):
+
+    def run(self, expression: BaseExpression) -> PassResult:
+        if isinstance(expression, ExpandExpression):
+            # TODO: actually expand stuff
+            return PassResult(expression, expression.inner)
+        return PassResult(expression, None)
+
+
 def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequence[Pass]] = None) -> BaseExpression:
     """try evaluate an expression.
 
@@ -154,7 +163,8 @@ def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequ
     passes: Sequence[Pass] = [
         ConstantsFolding(),
         CompoundSorting(),
-        HistoryExpansion(history)
+        HistoryExpansion(history),
+        Expanding(),
     ] if passes is None else passes
 
     # loop through passes, applying them all one by one.
