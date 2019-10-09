@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import reduce
 from typing import Optional, Sequence
 
@@ -144,11 +145,17 @@ class HistoryExpansion(Pass):
 
 class Expanding(Pass):
 
-    def run(self, expression: BaseExpression) -> PassResult:
-        if isinstance(expression, ExpandExpression):
+    def run(self, e: BaseExpression) -> PassResult:
+        if isinstance(e, ExpandExpression):
+            return self.walk(e)
+        return PassResult(e, None)
+
+    def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        if isinstance(e, ExpandExpression):
             # TODO: actually expand stuff
-            return PassResult(expression, expression.inner)
-        return PassResult(expression, None)
+            return e.inner
+        if isinstance(e, Literal) and isinstance(e.literal, Fraction):
+            return Literal(float(e.literal))
 
 
 def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequence[Pass]] = None) -> BaseExpression:
