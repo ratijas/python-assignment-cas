@@ -47,8 +47,14 @@ class BinaryOperation(enum.Enum):
         return DisplayOptions(True, True)
 
     @property
-    def need_parens(self) -> bool:
+    def is_mul_div(self) -> bool:
+        return self is BinaryOperation.Mul or self is BinaryOperation.Div
+
+    @property
+    def is_add_sub(self) -> bool:
         return self is BinaryOperation.Add or self is BinaryOperation.Sub
+
+    need_parens = is_add_sub
 
     @property
     def operator(self) -> Callable[['BaseExpression', 'BaseExpression'], 'BaseExpression']:
