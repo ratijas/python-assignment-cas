@@ -245,11 +245,14 @@ class ExpandExpression(BaseExpression):
 
 
 class CompoundExpression(BaseExpression):
-    def __init__(self, inner: Iterable[BaseExpression]):
+    def __init__(self, inner: Iterable[BaseExpression], paren: Optional[bool] = None):
         self.inner: MutableSequence[BaseExpression] = list(inner)
+        self.parens: Optional[bool] = paren
 
     def __str__(self) -> str:
-        return ''.join(map(str, self.inner))
+        l, r = '()' if self.parens else ('', '')
+        body = ''.join(map(str, self.inner))
+        return f'{l}{body}{r}'
 
     def __eq__(self, o: object):
         if not isinstance(o, CompoundExpression):
@@ -260,11 +263,13 @@ class CompoundExpression(BaseExpression):
         return hash((self.__class__.__name__, self.inner))
 
     def clone(self: 'CompoundExpression',
-              inner: Optional[Iterable[Optional[BaseExpression]]] = None) -> 'CompoundExpression':
+              inner: Optional[Iterable[Optional[BaseExpression]]] = None,
+              parens: Optional[bool] = None) -> 'CompoundExpression':
         inner = (
             new if new is not None else old.clone()
             for old, new in zip(self.inner, inner)
         ) if inner is not None else (
             old.clone() for old in self.inner
         )
-        return CompoundExpression(inner)
+        parens = parens if parens is not None else self.parens
+        return CompoundExpression(inner, parens)

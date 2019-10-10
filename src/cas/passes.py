@@ -127,6 +127,9 @@ class FactorsFolding(Pass):
         return self.walk(e)
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        #        Binary {* | /}
+        #        /          \
+        # M*compounds <op> N*compounds
         if isinstance(e, BinaryExpr) and e.op.is_add_sub and \
                 isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression) and \
                 FactorsFolding.starts_with_literal(e.lhs) and FactorsFolding.starts_with_literal(e.rhs) and \
@@ -135,6 +138,7 @@ class FactorsFolding(Pass):
             common = e.lhs.inner[1:]
             return CompoundExpression([factor, *common])
 
+        # Compound xxyyy -> x^2y^3
         if isinstance(e, CompoundExpression):
             factors: Dict[BaseExpression, CompoundExpression] = defaultdict(lambda: CompoundExpression(()))
             for factor in e.inner:
@@ -161,8 +165,7 @@ class FactorsFolding(Pass):
                         components.append(factor)
                         continue
 
-                parens = isinstance(power, (CompoundExpression, BinaryOperation))
-                components.append(BinaryExpr(factor, BinaryOperation.Pow, power, parens))
+                components.append(BinaryExpr(factor, BinaryOperation.Pow, power))
 
             result = CompoundExpression(components)
             if e != result:
@@ -218,6 +221,27 @@ class Expanding(Pass):
                 return BinaryExpr(new_lhs, e.rhs.op, new_rhs, True)
 
 
+class RemoveOuterParens(Pass):
+
+    def run(self, expression: BaseExpression) -> PassResult:
+        if isinstance(expression, BinaryExpr) and expression.parens is not False:
+            return PassResult(expression, expression.clone(parens=False))
+        return PassResult(expression, None)
+
+
+class WrapPowerRhsInParens(Pass):
+
+    def run(self, e: BaseExpression) -> PassResult:
+        return self.walk(e)
+
+    def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        if isinstance(e, BinaryExpr) and e.op is BinaryOperation.Pow and len(str(e.rhs)) > 1:
+            if isinstance(e.rhs, BinaryExpr) and e.rhs.parens is not True:
+                return e.clone(rhs=e.rhs.clone(parens=True))
+            if isinstance(e.rhs, CompoundExpression) and e.rhs.parens is not True:
+                return e.clone(rhs=e.rhs.clone(parens=True))
+
+
 def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequence[Pass]] = None) -> BaseExpression:
     """try evaluate an expression.
 
@@ -233,6 +257,9 @@ def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequ
         HistoryExpansion(history),
         FactorsFolding(),
         Expanding(),
+        # cosmetics
+        RemoveOuterParens(),
+        WrapPowerRhsInParens(),
     ] if passes is None else passes
 
     # loop through passes, applying them all one by one.
