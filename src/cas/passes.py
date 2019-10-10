@@ -70,7 +70,10 @@ class Pass(metaclass=ABCMeta):
             results = [self.walk(expr) for expr in e.inner]
 
             if any(inner.affected for inner in results):
-                e = e.clone(r.new for r in results)
+                e = e.clone([(r.new
+                              if r.affected is not None
+                              else r.old.clone())
+                             for r in results])
 
         # visit root node
         result = self.step(e)
@@ -112,9 +115,9 @@ class ConstantsFolding(Pass):
             if len(literals) > 1:
                 factor = reduce(BinaryOperation.Mul, (e.inner[i] for i in literals))
                 # remove literals
-                e = CompoundExpression(ex.clone()
-                                       for i, ex in enumerate(e.inner)
-                                       if i not in literals)
+                e = e.clone([ex.clone()
+                             for i, ex in enumerate(e.inner)
+                             if i not in literals])
                 # prepend factor, if it would make sense
                 if factor != Literal(1) or len(e.inner) == 0:
                     e.inner.insert(0, factor)

@@ -263,13 +263,8 @@ class CompoundExpression(BaseExpression):
         return hash((self.__class__.__name__, self.inner))
 
     def clone(self: 'CompoundExpression',
-              inner: Optional[Iterable[Optional[BaseExpression]]] = None,
+              inner: Optional[Iterable[BaseExpression]] = None,
               parens: Optional[bool] = None) -> 'CompoundExpression':
-        inner = (
-            new if new is not None else old.clone()
-            for old, new in zip(self.inner, inner)
-        ) if inner is not None else (
-            old.clone() for old in self.inner
-        )
+        inner = list(inner if inner is not None else map(lambda o: o.clone(), self.inner))
         parens = parens if parens is not None else self.parens
         return CompoundExpression(inner, parens)
