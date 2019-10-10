@@ -106,10 +106,9 @@ class ConstantsFolding(Pass):
             if len(literals) > 1:
                 factor = reduce(BinaryOperation.Mul, (e.inner[i] for i in literals))
                 # remove literals
-                e = e.clone()
-                e.inner = [ex.clone()
-                           for i, ex in enumerate(e.inner)
-                           if i not in literals]
+                e = CompoundExpression(ex.clone()
+                                       for i, ex in enumerate(e.inner)
+                                       if i not in literals)
                 # prepend factor, if it would make sense
                 if factor != Literal(1):
                     e.inner.insert(0, factor)
