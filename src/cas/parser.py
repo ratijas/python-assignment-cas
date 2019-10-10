@@ -312,7 +312,9 @@ class AstCompound(AstNode[List[BaseExpression]]):
 
 
 def build_expr(source: str) -> BaseExpression:
-    return build_ast(source).into_expr(source)
+    ast = build_ast(source)
+    expr = ast.into_expr(source)
+    return expr
 
 
 def build_ast(source: str) -> AstNode:
@@ -548,17 +550,19 @@ class CompoundReducer(Reducer):
 
     def reduce(self, source: str, nodes: Sequence[AstNode], n_start: Cursor, n_end: Cursor) -> Optional[Replace]:
         for i in range(n_start, n_end + 1):
-            node = nodes[i]
-            if CompoundReducer.filter_node(node):
+            if CompoundReducer.filter_node(nodes[i]):
                 j = i
+                # now that nodes[j] is confirmed, trying next, i.e. nodes[j + 1]
                 while j + 1 <= n_end:
                     if CompoundReducer.is_literal(nodes[j]) and CompoundReducer.is_literal(nodes[j + 1]):
                         raise ParseError(source, nodes[j].start, nodes[j + 1].end,
                                          'compound can not contain two literals in a row')
-                    if CompoundReducer.filter_node(nodes[j + 1]):
-                        j += 1
-                    else:
+                    if not CompoundReducer.filter_node(nodes[j + 1]):
                         break
+                    # nodes[j + 1] is confirmed OK
+                    j += 1
+
+                # if more then one node in a row
                 if j != i:
                     c_start, c_end = nodes[i], nodes[j]
                     s_start, s_end = c_start.start, c_end.end
