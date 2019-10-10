@@ -71,7 +71,7 @@ class Pass(metaclass=ABCMeta):
 
             if any(inner.affected for inner in results):
                 e = e.clone([(r.new
-                              if r.affected is not None
+                              if r.new is not None
                               else r.old.clone())
                              for r in results])
 
@@ -239,10 +239,11 @@ class WrapPowerRhsInParens(Pass):
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
         if isinstance(e, BinaryExpr) and e.op is BinaryOperation.Pow and len(str(e.rhs)) > 1:
-            if isinstance(e.rhs, BinaryExpr) and e.rhs.parens is not True:
-                return e.clone(rhs=e.rhs.clone(parens=True))
-            if isinstance(e.rhs, CompoundExpression) and e.rhs.parens is not True:
-                return e.clone(rhs=e.rhs.clone(parens=True))
+            power = e.rhs
+            if isinstance(power, BinaryExpr) and power.parens is not True:
+                return e.clone(rhs=power.clone(parens=True))
+            if isinstance(power, CompoundExpression) and power.parens is not True:
+                return e.clone(rhs=power.clone(parens=True))
 
 
 def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequence[Pass]] = None) -> BaseExpression:
