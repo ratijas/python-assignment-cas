@@ -121,9 +121,25 @@ class FactorsFolding(Pass):
         return self.walk(e)
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
+        if isinstance(e, BinaryExpr) and e.op in (BinaryOperation.Add, BinaryOperation.Sub) and \
+                isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression) and \
+                FactorsFolding.starts_with_literal(e.lhs) and FactorsFolding.starts_with_literal(e.rhs) and \
+                self.same_factors(e.lhs, e.rhs):
+            factor = e.op.operator(e.lhs.inner[0], e.rhs.inner[0])
+            common = e.lhs.inner[1:]
+            return CompoundExpression([factor, *common])
+
         if isinstance(e, BinaryExpr) and e.op in (BinaryOperation.Mul, BinaryOperation.Div):
             if isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression):
                 pass
+
+    @staticmethod
+    def starts_with_literal(e: CompoundExpression) -> bool:
+        return len(e.inner) > 0 and isinstance(e.inner[0], Literal)
+
+    @staticmethod
+    def same_factors(lhs: CompoundExpression, rhs: CompoundExpression) -> bool:
+        return CompoundExpression(lhs.inner[1:]) == CompoundExpression(rhs.inner[1:])
 
 
 class HistoryExpansion(Pass):
@@ -170,6 +186,7 @@ def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequ
         ConstantsFolding(),
         CompoundSorting(),
         HistoryExpansion(history),
+        FactorsFolding(),
         Expanding(),
     ] if passes is None else passes
 
