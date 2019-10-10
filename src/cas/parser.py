@@ -2,7 +2,7 @@ import abc
 import enum
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Generic, TypeVar, Iterable, Optional, List, Sequence, Callable, MutableSequence, Any, Union, Set
+from typing import Any, Callable, Generic, Iterable, List, MutableSequence, Optional, Sequence, Set, TypeVar, Union
 
 from .exception import *
 from .expression import *

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, TYPE_CHECKING, Mapping
+from typing import Dict, Mapping, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .expression import *

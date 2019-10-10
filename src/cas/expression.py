@@ -3,7 +3,7 @@ import operator
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Union, TypeVar, Optional, Callable, Iterable, MutableSequence
+from typing import Callable, Iterable, MutableSequence, Optional, TypeVar, Union
 
 from .exception import *
 from .history import *
@@ -42,8 +42,6 @@ class BinaryOperation(enum.Enum):
             return DisplayOptions(False, True)
         if self is BinaryOperation.Mul:
             return DisplayOptions(True, True)
-            # TODO: leave space-less version to the future CompoundMul variant
-            # return DisplayOptions(False, False)
         return DisplayOptions(True, True)
 
     @property
