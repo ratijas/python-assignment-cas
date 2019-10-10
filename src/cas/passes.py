@@ -1,8 +1,9 @@
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import reduce
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Dict, List
 
 from .expression import *
 from .history import *
@@ -21,6 +22,10 @@ __all__ = [
 class PassResult:
     old: BaseExpression
     new: Optional[BaseExpression]
+
+    @property
+    def any(self) -> BaseExpression:
+        return self.new if self.new is not None else self.old
 
     @property
     def affected(self) -> bool:
@@ -98,9 +103,10 @@ class ConstantsFolding(Pass):
         return self.walk(e)
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
-        if isinstance(e, BinaryExpr):
-            if all(isinstance(expr, Literal) for expr in (e.lhs, e.rhs)):
-                return e.op(e.lhs, e.rhs)
+        if isinstance(e, BinaryExpr) and \
+                isinstance(e.lhs, Literal) and isinstance(e.rhs, Literal):
+            return e.op(e.lhs, e.rhs)
+
         if isinstance(e, CompoundExpression):
             literals = [i for i, ex in enumerate(e.inner) if isinstance(ex, Literal)]
             if len(literals) > 1:
@@ -110,7 +116,7 @@ class ConstantsFolding(Pass):
                                        for i, ex in enumerate(e.inner)
                                        if i not in literals)
                 # prepend factor, if it would make sense
-                if factor != Literal(1):
+                if factor != Literal(1) or len(e.inner) == 0:
                     e.inner.insert(0, factor)
                 return e
 
@@ -121,7 +127,7 @@ class FactorsFolding(Pass):
         return self.walk(e)
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
-        if isinstance(e, BinaryExpr) and e.op in (BinaryOperation.Add, BinaryOperation.Sub) and \
+        if isinstance(e, BinaryExpr) and e.op.is_add_sub and \
                 isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression) and \
                 FactorsFolding.starts_with_literal(e.lhs) and FactorsFolding.starts_with_literal(e.rhs) and \
                 self.same_factors(e.lhs, e.rhs):
@@ -129,9 +135,38 @@ class FactorsFolding(Pass):
             common = e.lhs.inner[1:]
             return CompoundExpression([factor, *common])
 
-        if isinstance(e, BinaryExpr) and e.op in (BinaryOperation.Mul, BinaryOperation.Div):
-            if isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression):
-                pass
+        if isinstance(e, CompoundExpression):
+            factors: Dict[BaseExpression, CompoundExpression] = defaultdict(lambda: CompoundExpression(()))
+            for factor in e.inner:
+                print(f'factor: {factor} {factor!r}')
+                if isinstance(factor, BinaryExpr) and factor.op is BinaryOperation.Pow:
+                    factors[factor.lhs].inner.append(factor.rhs)
+                else:
+                    for index, f in enumerate(factors[factor].inner):
+                        if isinstance(f, Literal):
+                            factors[factor].inner[index] = f + Literal(1)
+                            break
+                    else:
+                        factors[factor].inner.insert(0, Literal(1))
+
+            components: List[BaseExpression] = []
+            for factor, power in factors.items():
+                # print(f"BBBBBBBBB {factor}, {power}")
+                # power = ConstantsFolding().run(power).old
+                # print(f"ANYYY {power}")
+                if isinstance(power, CompoundExpression) and len(power.inner) == 1:
+                    power = power.inner[0]
+
+                    if power == Literal(1):
+                        components.append(factor)
+                        continue
+
+                parens = isinstance(power, (CompoundExpression, BinaryOperation))
+                components.append(BinaryExpr(factor, BinaryOperation.Pow, power, parens))
+
+            result = CompoundExpression(components)
+            if e != result:
+                return result
 
     @staticmethod
     def starts_with_literal(e: CompoundExpression) -> bool:
@@ -162,15 +197,25 @@ class Expanding(Pass):
 
     def run(self, e: BaseExpression) -> PassResult:
         if isinstance(e, ExpandExpression):
-            return self.walk(e)
+            result = self.walk(e.inner)
+            return PassResult(e, result.new)
         return PassResult(e, None)
 
     def step(self, e: BaseExpression) -> Optional[BaseExpression]:
-        if isinstance(e, ExpandExpression):
-            # TODO: actually expand stuff
-            return e.inner
         if isinstance(e, Literal) and isinstance(e.literal, Fraction):
             return Literal(float(e.literal))
+
+        if isinstance(e, BinaryExpr) and e.op.is_mul_div:
+            if isinstance(e.lhs, BinaryExpr) and e.lhs.op.is_add_sub:
+                # e == (lhs.l {+ | -} lhs.r) {* | /} rhs -> ((lhs.l {* | /} rhs) {+ | -} (lhs.r {* | /} rhs))
+                new_lhs = BinaryExpr(e.lhs.lhs, e.op, e.rhs, False)
+                new_rhs = BinaryExpr(e.lhs.rhs, e.op, e.rhs, False)
+                return BinaryExpr(new_lhs, e.lhs.op, new_rhs, True)
+            if isinstance(e.rhs, BinaryExpr) and e.rhs.parens is not False:
+                # e == lhs {* | /} (rhs.l {+ | -} rhs.r)
+                new_lhs = BinaryExpr(e.lhs, e.op, e.rhs.lhs, False)
+                new_rhs = BinaryExpr(e.lhs, e.op, e.rhs.rhs, False)
+                return BinaryExpr(new_lhs, e.rhs.op, new_rhs, True)
 
 
 def evaluate(history: History, expression: BaseExpression, passes: Optional[Sequence[Pass]] = None) -> BaseExpression:
