@@ -185,6 +185,9 @@ class BinaryExpr(BaseExpression):
             self.parens == o.parens and \
             self.lhs == o.lhs and self.rhs == o.rhs
 
+    def __hash__(self) -> int:
+        return hash((self.__class__.__name__, self.lhs, self.op, self.rhs))
+
     def clone(self: 'BinaryExpr',
               lhs: Optional[BaseExpression] = None,
               rhs: Optional[BaseExpression] = None,
@@ -209,6 +212,9 @@ class HistoryRef(BaseExpression):
             return NotImplemented
         return self.item == o.item
 
+    def __hash__(self) -> int:
+        return hash((self.__class__.__name__, self.item))
+
     def resolve(self, history: 'History') -> 'BaseExpression':
         if self.item not in history:
             raise InvalidExpressionError()
@@ -224,6 +230,9 @@ class ExpandExpression(BaseExpression):
 
     def __str__(self) -> str:
         return f'expand {self.inner}'
+
+    def __hash__(self) -> int:
+        return hash((self.__class__.__name__, self.inner))
 
     def __eq__(self, o: object) -> bool:
         if not isinstance(o, ExpandExpression):
@@ -246,6 +255,9 @@ class CompoundExpression(BaseExpression):
         if not isinstance(o, CompoundExpression):
             return NotImplemented
         return all(lhs == rhs for lhs, rhs in zip(self.inner, o.inner))
+
+    def __hash__(self) -> int:
+        return hash((self.__class__.__name__, self.inner))
 
     def clone(self: 'CompoundExpression',
               inner: Optional[Iterable[Optional[BaseExpression]]] = None) -> 'CompoundExpression':
