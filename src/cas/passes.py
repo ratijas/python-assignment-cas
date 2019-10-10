@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import reduce
-from typing import Optional, Sequence, Dict, List
+from typing import Dict, List, MutableSequence, Optional, Sequence, Tuple
 
 from .expression import *
 from .history import *
@@ -141,36 +141,43 @@ class FactorsFolding(Pass):
             common = e.lhs.inner[1:]
             return CompoundExpression([factor, *common])
 
+        if isinstance(e, BinaryExpr) and e.op.is_mul_div:
+            power = {BinaryOperation.Mul: 1, BinaryOperation.Div: -1}[e.op]
+            # compounds <op> symbol
+            if isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, (Symbol, Literal)):
+                return e.lhs.clone([
+                    *e.lhs.inner,
+                    BinaryExpr(e.rhs, BinaryOperation.Pow, Literal(power), False),
+                ])
+            # make sure each of compounds gets copy of power
+            # symbol / compounds -> symbol * compounds^-1
+            if isinstance(e.lhs, (Symbol, Literal)) and isinstance(e.rhs, CompoundExpression):
+                return e.rhs.clone([
+                    e.lhs,
+                    *[BinaryExpr(rhs, BinaryOperation.Pow, Literal(power), False)
+                      for rhs in e.rhs.inner],
+                ])
+            # symbol * literal -> compound
+            if isinstance(e.lhs, (Symbol, Literal)) and isinstance(e.rhs, (Symbol, Literal)):
+                if isinstance(e.rhs, Symbol) and e.op is BinaryOperation.Div:
+                    return
+                return CompoundExpression([
+                    e.lhs,
+                    BinaryExpr(e.rhs, BinaryOperation.Pow, Literal(power), False),
+                ])
+            # compound * compound -> OneBigCompound
+            if isinstance(e.lhs, CompoundExpression) and isinstance(e.rhs, CompoundExpression):
+                return CompoundExpression([
+                    *e.lhs.inner,
+                    *[BinaryExpr(rhs, BinaryOperation.Pow, Literal(power), False)
+                      for rhs in e.rhs.inner]
+                ])
+
         # Compound xxyyy -> x^2y^3
         if isinstance(e, CompoundExpression):
-            factors: Dict[BaseExpression, CompoundExpression] = defaultdict(lambda: CompoundExpression(()))
-            for factor in e.inner:
-                print(f'factor: {factor} {factor!r}')
-                if isinstance(factor, BinaryExpr) and factor.op is BinaryOperation.Pow:
-                    factors[factor.lhs].inner.append(factor.rhs)
-                else:
-                    for index, f in enumerate(factors[factor].inner):
-                        if isinstance(f, Literal):
-                            factors[factor].inner[index] = f + Literal(1)
-                            break
-                    else:
-                        factors[factor].inner.insert(0, Literal(1))
+            components = self.collect_compound_components_by_base(e)
+            result = self.assemble_compound_from_components(components)
 
-            components: List[BaseExpression] = []
-            for factor, power in factors.items():
-                # print(f"BBBBBBBBB {factor}, {power}")
-                # power = ConstantsFolding().run(power).old
-                # print(f"ANYYY {power}")
-                if isinstance(power, CompoundExpression) and len(power.inner) == 1:
-                    power = power.inner[0]
-
-                    if power == Literal(1):
-                        components.append(factor)
-                        continue
-
-                components.append(BinaryExpr(factor, BinaryOperation.Pow, power))
-
-            result = CompoundExpression(components)
             if e != result:
                 return result
 
@@ -181,6 +188,82 @@ class FactorsFolding(Pass):
     @staticmethod
     def same_factors(lhs: CompoundExpression, rhs: CompoundExpression) -> bool:
         return CompoundExpression(lhs.inner[1:]) == CompoundExpression(rhs.inner[1:])
+
+    @classmethod
+    def collect_compound_components_by_base(cls, e: CompoundExpression) -> Dict[BaseExpression, List[BaseExpression]]:
+        # factors are added to each other in the end
+        components: Dict[BaseExpression, List[BaseExpression]] = defaultdict(list)
+        for expr in e.inner:
+
+            # component := base ^ power
+            if isinstance(expr, BinaryExpr) and expr.op is BinaryOperation.Pow:
+                base, power = expr.lhs, expr.rhs
+                components[base].append(power)
+
+            # component := expr
+            else:
+                base, power = expr, Literal(1)
+                # get and increment by one
+                lst = components[base]
+                idx, literal = cls.get_or_insert_literal(lst)
+                lst[idx] = literal + power
+
+        return components
+
+    @classmethod
+    def get_or_insert_literal(cls, components: MutableSequence[BaseExpression],
+                              default: Literal = Literal(0)) -> Tuple[int, Literal]:
+        for idx, expr in enumerate(components):
+            if isinstance(expr, Literal):
+                return idx, expr
+        else:
+            components.append(default)
+            return len(components) - 1, default
+
+    @classmethod
+    def assemble_compound_from_components(cls,
+                                          components: Dict[BaseExpression, List[BaseExpression]]) -> CompoundExpression:
+        expressions: List[BaseExpression] = []
+
+        for base in sorted(components.keys(), key=str):
+            powers = components[base]
+            result = cls.assemble_base_with_power(base, powers)
+            if result != Literal(1):
+                expressions.append(result)
+
+        if len(expressions) == 0:
+            expressions.append(Literal(1))
+
+        return CompoundExpression(expressions)
+
+    @classmethod
+    def assemble_base_with_power(cls, base: BaseExpression,
+                                 powers: Sequence[BaseExpression]) -> Optional[BaseExpression]:
+        assert len(powers) > 0
+
+        if len(powers) == 1:
+            power = powers[0]
+
+            # a ^ 0 == 1.
+            if power == Literal(0):
+                return Literal(1)
+
+            # a ^ 1 == a
+            elif power == Literal(1):
+                return base
+
+            # a ^ b == ?
+            else:
+                return BinaryExpr(base, BinaryOperation.Pow, power)
+
+        # a ^ (b + c + ...)
+        else:
+            power = reduce(cls.combine_sum, powers)
+            return BinaryExpr(base, BinaryOperation.Pow, power)
+
+    @classmethod
+    def combine_sum(cls, lhs: BaseExpression, rhs: BaseExpression) -> BaseExpression:
+        return BinaryExpr(lhs, BinaryOperation.Add, rhs, False)
 
 
 class HistoryExpansion(Pass):
