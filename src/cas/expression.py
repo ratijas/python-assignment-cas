@@ -71,12 +71,21 @@ T = TypeVar('T')
 
 
 class BaseExpression(metaclass=ABCMeta):
+
+    @abstractmethod
+    def __str__(self) -> str:
+        ...
+
+    @abstractmethod
+    def __eq__(self, o: object) -> bool:
+        ...
+
     def expand(self) -> 'BaseExpression':
         return self
 
     @abstractmethod
     def clone(self: 'T') -> 'T':
-        raise NotImplemented
+        ...
 
 
 class Literal(BaseExpression):
@@ -111,10 +120,10 @@ class Literal(BaseExpression):
             return Literal(self.literal ** other.literal)
         return BinaryExpr(self, BinaryOperation.Pow, other)
 
-    def __eq__(self, other: object):
-        if not isinstance(other, Literal):
+    def __eq__(self, o: object):
+        if not isinstance(o, Literal):
             return NotImplemented
-        return self.literal == other.literal
+        return self.literal == o.literal
 
     def __hash__(self):
         return hash(self.literal)
@@ -130,10 +139,10 @@ class Symbol(BaseExpression):
     def __str__(self) -> str:
         return self.symbol
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Symbol):
-            return False
-        return self.symbol == other.symbol
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, Symbol):
+            return NotImplemented
+        return self.symbol == o.symbol
 
     def __hash__(self) -> int:
         return hash(self.symbol)
@@ -162,6 +171,14 @@ class BinaryExpr(BaseExpression):
         else:
             return f'{l}{self.lhs}{space}{op}{space}{self.rhs}{r}'
 
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, BinaryExpr):
+            return NotImplemented
+        return \
+            self.op == o.op and \
+            self.parens == o.parens and \
+            self.lhs == o.lhs and self.rhs == o.rhs
+
     def clone(self: 'BinaryExpr',
               lhs: Optional[BaseExpression] = None,
               rhs: Optional[BaseExpression] = None,
@@ -181,6 +198,11 @@ class HistoryRef(BaseExpression):
             return '[last]'
         return f'[{self.item}]'
 
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, HistoryRef):
+            return NotImplemented
+        return self.item == o.item
+
     def resolve(self, history: 'History') -> 'BaseExpression':
         if self.item not in history:
             raise InvalidExpressionError()
@@ -197,6 +219,11 @@ class ExpandExpression(BaseExpression):
     def __str__(self) -> str:
         return f'expand {self.inner}'
 
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, ExpandExpression):
+            return NotImplemented
+        return self.inner == o.inner
+
     def clone(self: 'ExpandExpression', inner: Optional[BaseExpression] = None) -> 'ExpandExpression':
         inner = inner if inner is not None else self.inner.clone()
         return ExpandExpression(inner)
@@ -208,6 +235,11 @@ class CompoundExpression(BaseExpression):
 
     def __str__(self) -> str:
         return ''.join(map(str, self.inner))
+
+    def __eq__(self, o: object):
+        if not isinstance(o, CompoundExpression):
+            return NotImplemented
+        return all(lhs == rhs for lhs, rhs in zip(self.inner, o.inner))
 
     def clone(self: 'CompoundExpression',
               inner: Optional[Iterable[Optional[BaseExpression]]] = None) -> 'CompoundExpression':
